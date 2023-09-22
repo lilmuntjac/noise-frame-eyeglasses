@@ -359,3 +359,76 @@ class FairFace:
             shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
         self.val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, \
             shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
+
+#
+# -------------------- HAM10000 dataset --------------------
+#
+class HAM10000Dataset(torch.utils.data.Dataset):
+    """Custom pytorch Dataset class for HAM10000 dataset"""
+    
+    def __init__(self, csv_file, root_dir, transform=None):
+        self.attributes = pd.read_csv(csv_file)
+        self.root_dir = Path(root_dir)
+        self.transform = transform
+        self.case_dict = {'akiec': 0, 'bcc': 1, 'bkl': 2, 'df': 3, 'mel': 4, 'nv': 5, 'vasc': 6}
+        self.gender_dict = {'male': 0, 'unknown': 0, 'female': 1}
+
+    def __len__(self):
+        return len(self.attributes.index)
+    
+    def __getitem__(self, index: int):
+        X = Image.open(self.root_dir / (self.attributes.iloc[index]['image_id']+'.jpg'))
+        if self.transform:
+            X = self.transform(X)
+
+        # get raw attributes from csv file
+        dx = self.attributes.iloc[index]['dx']
+        sex = self.attributes.iloc[index]['sex']
+        # bundle up raw attributes into labels (case)
+        target = [self.case_dict[dx], self.gender_dict[sex]]
+        target = torch.tensor(target)
+        return X, target
+
+@dataclass
+class HAM10000:
+    """
+    get train and validation dataloader from HAM10000 dataset
+    source: https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/DBW86T
+    """
+
+    batch_size: int = 128
+    root: str = '/tmp2/dataset/HAM10000'
+    train_csv: str = '/tmp2/dataset/HAM10000/ham10000_train.csv'
+    val_csv: str = '/tmp2/dataset/HAM10000/ham10000_val.csv'
+    mean: Tuple = (0.485, 0.456, 0.406)
+    std: Tuple = (0.229, 0.224, 0.225)
+
+    train_dataloader: torch.utils.data.DataLoader = field(init=False)
+    val_dataloader: torch.utils.data.DataLoader = field(init=False)
+
+    def __post_init__(self):
+        train_transform: transforms.transforms.Compose = \
+            transforms.Compose([
+                transforms.TrivialAugmentWide(),
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                # To do extra operation onto the image
+                # we decided to normalize the image right before passing it into the model
+                # transforms.Normalize(mean, std),
+                # because of this, random erasing pixel as imagenet mean, not zero
+                # transforms.RandomErasing(0.2, value=self.mean),
+            ])
+        val_transform: transforms.transforms.Compose = \
+            transforms.Compose([
+                transforms.Resize((224, 224)), 
+                transforms.ToTensor(),
+                # To do extra operation onto the image
+                # we decided to normalize the image right before passing it into the model
+                # transforms.Normalize(mean, std),
+            ])
+        train_dataset = HAM10000Dataset(self.train_csv, self.root+'/train',transform=train_transform)
+        val_dataset = HAM10000Dataset(self.val_csv, self.root+'/train', transform=val_transform)
+        self.train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, \
+            shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
+        self.val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, \
+            shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)

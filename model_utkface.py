@@ -23,8 +23,8 @@ def main(args):
     val_dataloader = utkface.val_dataloader
 
     # model, optimizer, and scheduler
-    print(f'Calling model predicting gender and age')
-    model = CategoricalModel(out_feature=11, weights=None).to(device)
+    print(f'Calling model predicting race')
+    model = CategoricalModel(out_feature=5, weights=None).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=1e-5
     )
@@ -57,8 +57,7 @@ def main(args):
         model.train()
         # training loop
         for batch_idx, (data, raw_label) in enumerate(train_dataloader):
-            # sens, label = raw_label[:,0:1], raw_label
-            sens, label = raw_label[:,0:1], raw_label[:,1:]
+            label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: race, sensitive attribute: gender
             data, label, sens = data.to(device), label.to(device), sens.to(device)
             instance = normalize(data)
             optimizer.zero_grad()
@@ -83,8 +82,7 @@ def main(args):
         with torch.no_grad():
             # validaton loop
             for batch_idx, (data, raw_label) in enumerate(val_dataloader):
-                # sens, label = raw_label[:,0:1], raw_label
-                sens, label = raw_label[:,0:1], raw_label[:,1:]
+                label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: race, sensitive attribute: gender
                 data, label, sens = data.to(device), label.to(device), sens.to(device)
                 instance = normalize(data)
                 logit = model(instance)

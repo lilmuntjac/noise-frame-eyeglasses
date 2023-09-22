@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.datasets import FairFace
+from src.datasets import HAM10000
 from src.models import CategoricalModel
 from src.utils import *
 
@@ -13,17 +13,17 @@ def main(args):
     print('Pytorch is running on version: ' + torch.__version__)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    start_time = time.time()
+    time_start = time.perf_counter()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    # dataset, dataloader (FairFace)
-    fairface = FairFace(batch_size=args.batch_size)
-    train_dataloader = fairface.train_dataloader
-    val_dataloader = fairface.val_dataloader
+    # dataset, dataloader (HAM10000)
+    ham10000 = HAM10000(batch_size=args.batch_size)
+    train_dataloader = ham10000.train_dataloader
+    val_dataloader = ham10000.val_dataloader
 
     # model, optimizer, and scheduler
-    print(f'Calling model predicting race')
+    print(f'Calling model predicting case')
     model = CategoricalModel(out_feature=7, weights=None).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=1e-5
@@ -37,26 +37,23 @@ def main(args):
         val_stat = load_stats(name=args.model_name+'_val', root_folder=model_stat_path)
     else:
         train_stat, val_stat = np.array([]), np.array([])
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - time_start
     print(f'Preparation done in {total_time:.4f} secs')
 
     def to_prediction(logit):
-        _, race_pred = torch.max(logit[:,0:7], dim=1)
-        return race_pred.unsqueeze(1)
-
+        _, case_pred = torch.max(logit[:,0:7], dim=1)
+        return case_pred.unsqueeze(1)
+    
     def train():
         train_stat = np.array([])
         model.train()
         # training loop
         for batch_idx, (data, raw_label) in enumerate(train_dataloader):
-            label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: race, sensitive attribute: gender
+            label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: case, sensitive attribute: gender
             data, label, sens = data.to(device), label.to(device), sens.to(device)
             instance = normalize(data)
             optimizer.zero_grad()
             logit = model(instance)
-            # loss = F.cross_entropy(logit[:, 0:7], label[:,0]) + \
-            #        F.cross_entropy(logit[:, 7:9], label[:,1]) + \
-            #        F.cross_entropy(logit[:, 9:18], label[:,2])
             loss = F.cross_entropy(logit[:, 0:7], label[:,0])
             loss.backward()
             optimizer.step()
@@ -73,7 +70,7 @@ def main(args):
         with torch.no_grad():
             # validaton loop
             for batch_idx, (data, raw_label) in enumerate(val_dataloader):
-                label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: race, sensitive attribute: gender
+                label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: case, sensitive attribute: gender
                 data, label, sens = data.to(device), label.to(device), sens.to(device)
                 instance = normalize(data)
                 logit = model(instance)
@@ -96,7 +93,7 @@ def main(args):
         return stat_dict
     # print the epoch status on to the terminal
     def show_stats_per_epoch(train_stat_per_epoch, val_stat_per_epoch):
-        attr_list = ["Race",]
+        attr_list = ["Case",]
         for index, attr_name in enumerate(attr_list):
             print(f'    attribute: {attr_name: >40}')
             stat_dict = get_stats_per_epoch(train_stat_per_epoch)
@@ -111,14 +108,14 @@ def main(args):
 
     # Run the code
     print(f'Start training model')
-    start_time = time.time()
+    time_start = time.perf_counter()
 
     for epoch in range(args.start_epoch, args.epochs):
-        epoch_start = time.time()
+        epoch_start = time.perf_counter()
         train_stat_per_epoch = train()
         # scheduler.step()
         val_stat_per_epoch = val()
-        epoch_time = time.time() - epoch_start
+        epoch_time = time.perf_counter() - epoch_start
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
@@ -129,7 +126,7 @@ def main(args):
     # save basic statistic
     save_stats(train_stat, f'{args.model_name}_train', root_folder=model_stat_path)
     save_stats(val_stat, f'{args.model_name}_val', root_folder=model_stat_path)
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - time_start
     print(f'Training time: {total_time/60:.4f} mins')
 
 def get_args():

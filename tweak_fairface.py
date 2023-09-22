@@ -24,8 +24,8 @@ def main(args):
     val_dataloader = fairface.val_dataloader
 
     # the base model, optimizer, and scheduler
-    print(f'Calling model predicting gender and age')
-    model = CategoricalModel(out_feature=11, weights=None).to(device)
+    print(f'Calling model predicting race')
+    model = CategoricalModel(out_feature=7, weights=None).to(device)
     _optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=1e-5
     )
@@ -62,10 +62,8 @@ def main(args):
     print(f'Preparation done in {total_time:.4f} secs')
 
     def to_prediction(logit):
-        _, gender_pred = torch.max(logit[:,0:2], dim=1)
-        _, age_pred = torch.max(logit[:,2:11], dim=1)
-        pred = torch.stack((gender_pred, age_pred), dim=1)
-        return pred
+        _, race_pred = torch.max(logit[:,0:7], dim=1)
+        return race_pred.unsqueeze(1)
 
     # train and validation function
     def train():
@@ -76,7 +74,7 @@ def main(args):
             data, raw_label = data.to(device), raw_label.to(device)
             # tweak on data
             data, raw_label = tweaker.apply(data, raw_label, adv_component)
-            sens, label = raw_label[:,0:1], raw_label[:,1:]
+            label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: race, sensitive attribute: gender
             instance = normalize(data)
             adversary_optimizer.zero_grad()
             logit = model(instance)
@@ -104,7 +102,7 @@ def main(args):
                 data, raw_label = data.to(device), raw_label.to(device)
                 # tweak on data
                 data, raw_label = tweaker.apply(data, raw_label, adv_component)
-                sens, label = raw_label[:,0:1], raw_label[:,1:]
+                label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: race, sensitive attribute: gender
                 instance = normalize(data)
                 logit = model(instance)
                 # collecting performance information
@@ -127,7 +125,7 @@ def main(args):
     # print the epoch status on to the terminal
     def show_stats_per_epoch(train_stat_per_epoch, val_stat_per_epoch):
         # attr_list = ["Race", "Gender", "Age"]
-        attr_list = ["Gender", "Age"]
+        attr_list = ["Race",]
         for index, attr_name in enumerate(attr_list):
             print(f'    attribute: {attr_name: >40}')
             stat_dict = get_stats_per_epoch(train_stat_per_epoch)

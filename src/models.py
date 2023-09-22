@@ -34,8 +34,11 @@ class CategoricalModel(torch.nn.Module):
     """
     categorical attribute prediction model,
     change the "out_feature" for different model.
-        16: UTKFace
-        18: FairFace
+        16: UTKFace (all attributes)
+        5: UTKFace Race
+        18: FairFace (all attributes)
+        7: FairFace Race
+
     """
 
     def __init__(self, out_feature=18, weights='ResNet34_Weights.DEFAULT'):

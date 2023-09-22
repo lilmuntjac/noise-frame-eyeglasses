@@ -187,8 +187,6 @@ def main(args):
     time_end = time.perf_counter()
     print(f'done in {(time_end-time_start)/60:.4f} mins')
 
-    pass
-
 def get_args():
     import argparse
     parser = argparse.ArgumentParser(description="Show status")
