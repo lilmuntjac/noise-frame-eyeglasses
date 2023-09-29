@@ -1,10 +1,50 @@
 #!/usr/bin/env bash
 
 # select GPUs on the server
-export CUDA_VISIBLE_DEVICES="0"
+export CUDA_VISIBLE_DEVICES="1"
 
-python tweak_fairfaceage.py --model-name FairFaceAge_test --model-ckpt-name 0031 \
+# template
+python tweak_fairfaceage.py --model-name FairFaceAge_lr_1e_3_b1 --model-ckpt-name 0020 \
 --attr-list Age \
---adv-type eyeglasses --advatk-ckpt-root /tmp2/npfe/eyeglasses --advatk-stat-root /tmp2/npfe/eyeglasses_stats --advatk-name fairfaceage_poptim \
--b 128 --epochs 15 --lr 1e1 \
---fairness-matrix "equalized odds" --loss-type "perturb optim"\
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name fairfaceage_test --loss-type "direct" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
+--coef-mode "static" \
+--p-coef 0.0 \
+--n-coef 0.0 \
+
+python tweak_fairfaceage.py --model-name FairFaceAge_lr_1e_3_b1 --model-ckpt-name 0020 \
+--attr-list Age \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name fairfaceage_test --loss-type "masking" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
+--coef-mode "static" \
+--p-coef 0.0 \
+--n-coef 0.0 \
+
+python tweak_fairfaceage.py --model-name FairFaceAge_lr_1e_3_b1 --model-ckpt-name 0020 \
+--attr-list Age \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name fairfaceage_test --loss-type "perturb optim" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
+--coef-mode "static" \
+--p-coef 0.0 \
+--n-coef 0.0 \
+
+python tweak_fairfaceage.py --model-name FairFaceAge_lr_1e_3_b1 --model-ckpt-name 0020 \
+--attr-list Age \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name fairfaceage_test --loss-type "perturb optim" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
+--coef-mode "dynamic" \
+--p-coef 0.1 \
+--n-coef 0.1 \
+
+python tweak_fairfaceage.py --model-name FairFaceAge_lr_1e_3_b1 --model-ckpt-name 0020 \
+--attr-list Age \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name fairfaceage_test --loss-type "full perturb optim" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
+--coef-mode "dynamic" \
+--p-coef 0.1 \
+--n-coef 0.1 \

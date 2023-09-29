@@ -124,8 +124,8 @@ def main(args):
         # save model checkpoint
         save_model(model, optimizer, scheduler, name=f'{epoch:04d}', root_folder=model_ckpt_path)
     # save basic statistic
-    save_stats(train_stat, f'{args.model_name}_train', root_folder=model_stat_path)
-    save_stats(val_stat, f'{args.model_name}_val', root_folder=model_stat_path)
+    save_stats(train_stat, f'train', root_folder=model_stat_path)
+    save_stats(val_stat, f'val', root_folder=model_stat_path)
     total_time = time.perf_counter() - time_start
     print(f'Training time: {total_time/60:.4f} mins')
 

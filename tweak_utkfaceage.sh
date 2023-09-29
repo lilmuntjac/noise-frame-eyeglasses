@@ -1,22 +1,50 @@
 #!/usr/bin/env bash
 
 # select GPUs on the server
-export CUDA_VISIBLE_DEVICES="0"
+export CUDA_VISIBLE_DEVICES="4"
 
+# template
 python tweak_utkfaceage.py --model-name UTKFaceAge_lr_5e_4_b1 --model-ckpt-name 0013 \
 --attr-list Age \
---adv-type eyeglasses --advatk-ckpt-root /tmp2/npfe/eyeglasses --advatk-stat-root /tmp2/npfe/eyeglasses_stats \
---advatk-name utkfaceage_p_t --loss-type "perturb optim" --fairness-matrix "equalized odds" \
--b 256 --epochs 5 --lr 1e1 \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name utkfaceage_test --loss-type "direct" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
 --coef-mode "static" \
 --p-coef 0.0 \
 --n-coef 0.0 \
 
 python tweak_utkfaceage.py --model-name UTKFaceAge_lr_5e_4_b1 --model-ckpt-name 0013 \
 --attr-list Age \
---adv-type eyeglasses --advatk-ckpt-root /tmp2/npfe/eyeglasses --advatk-stat-root /tmp2/npfe/eyeglasses_stats \
---advatk-name utkfaceage_pp_t --loss-type "perturb optim" --fairness-matrix "equalized odds" \
--b 256 --epochs 5 --lr 1e1 \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name utkfaceage_test --loss-type "masking" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
+--coef-mode "static" \
+--p-coef 0.0 \
+--n-coef 0.0 \
+
+python tweak_utkfaceage.py --model-name UTKFaceAge_lr_5e_4_b1 --model-ckpt-name 0013 \
+--attr-list Age \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name utkfaceage_test --loss-type "perturb optim" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
+--coef-mode "static" \
+--p-coef 0.0 \
+--n-coef 0.0 \
+
+python tweak_utkfaceage.py --model-name UTKFaceAge_lr_5e_4_b1 --model-ckpt-name 0013 \
+--attr-list Age \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name utkfaceage_test --loss-type "perturb optim" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
 --coef-mode "dynamic" \
---p-coef 0.05 \
---n-coef 0.05 \
+--p-coef 0.1 \
+--n-coef 0.1 \
+
+python tweak_utkfaceage.py --model-name UTKFaceAge_lr_5e_4_b1 --model-ckpt-name 0013 \
+--attr-list Age \
+--adv-type noise --advatk-ckpt-root /tmp2/npfe/noise --advatk-stat-root /tmp2/npfe/noise_stats \
+--advatk-name utkfaceage_test --loss-type "full perturb optim" --fairness-matrix "equalized odds" \
+-b 256 --epochs 2 --lr 1e1 \
+--coef-mode "dynamic" \
+--p-coef 0.1 \
+--n-coef 0.1 \

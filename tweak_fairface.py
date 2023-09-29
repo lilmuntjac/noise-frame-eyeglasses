@@ -45,7 +45,7 @@ def main(args):
             assert False, "Unknown element type"
     tweaker = Tweaker(batch_size=args.batch_size, tweak_type=args.adv_type)
     losses = Losses(loss_type=args.loss_type, fairness_criteria=args.fairness_matrix, 
-                    pred_type='categorical', out_feature=11, soft_label=False)
+                    pred_type='categorical', dataset_name='FairFace', soft_label=False)
 
     if args.resume:
         adv_component = load_stats(name=args.resume, root_folder=advatk_ckpt_path)
@@ -78,7 +78,7 @@ def main(args):
             instance = normalize(data)
             adversary_optimizer.zero_grad()
             logit = model(instance)
-            loss = losses.run(logit, label, sens)
+            loss = losses.run(logit, label, sens, coef) # categorical
             loss.backward()
             # if batch_idx % 128 ==0:
             #     adversary_optimizer.step()
@@ -124,7 +124,6 @@ def main(args):
         return stat_dict
     # print the epoch status on to the terminal
     def show_stats_per_epoch(train_stat_per_epoch, val_stat_per_epoch):
-        # attr_list = ["Race", "Gender", "Age"]
         attr_list = ["Race",]
         for index, attr_name in enumerate(attr_list):
             print(f'    attribute: {attr_name: >40}')
@@ -162,6 +161,21 @@ def main(args):
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
+        if args.coef_mode == "dynamic":
+            init_tacc = get_stats_per_epoch(val_stat[0:1,:,:])["total_acc"]
+            last_tacc = get_stats_per_epoch(val_stat[-2:-1,:,:])["total_acc"]
+            curr_tacc = get_stats_per_epoch(val_stat_per_epoch)["total_acc"]
+            fairness_dict_key = fairness_matrix_to_dict_key(args.fairness_matrix)
+            last_fairness = get_stats_per_epoch(val_stat[-2:-1,:,:])[fairness_dict_key]
+            curr_fairness = get_stats_per_epoch(val_stat_per_epoch)[fairness_dict_key]
+            # print the coefficient (categorical)
+            coef_list = coef.clone().cpu().numpy().tolist()
+            coef_list = [f'{f:.4f}' for f in coef_list]
+            print(f'    coef: {" ".join(coef_list)}')
+            if curr_tacc[0] < init_tacc[0] - args.quality_target: # 0: Race
+                coef[0] = min(coef[0]*1.05, 1e4)
+            elif curr_tacc[0] > args.fairness_target and curr_fairness[0] > last_fairness[0]:
+                coef[0] = max(coef[0]*0.95, 1e-4)
         # print some basic statistic
         show_stats_per_epoch(train_stat_per_epoch, val_stat_per_epoch)
         # save the adversarial component for each epoch
@@ -199,14 +213,17 @@ def get_args():
 
 
 
-
-    # binary model
     parser.add_argument("--fairness-matrix", default="prediction quaility", help="how to measure fairness")
+    # binary model
     # parser.add_argument("--p-coef", default=[0.1, 0.1, 0.1, 0.1, 0.1, 0.1,], type=float, nargs='+', help="coefficient multiply on positive recovery loss, need to be match with the number of attributes")
     # parser.add_argument("--n-coef", default=[0.1, 0.1, 0.1, 0.1, 0.1, 0.1,], type=float, nargs='+', help="coefficient multiply on negative recovery loss, need to be match with the number of attributes")
-    parser.add_argument("--coef", default=[0.1,], type=float, nargs='+', help="coefficient multiply on negative recovery loss, need to be match with the number of attributes")
+    # categorical model 
+    parser.add_argument("--coef", default=[0.0,], type=float, nargs='+', help="coefficient multiply on negative recovery loss, need to be match with the number of attributes")
     # loss types
     parser.add_argument("--loss-type", default='direct', type=str, help="Type of loss used")
+    parser.add_argument("--coef-mode", default="static", type=str, help="method to adjust coef durinig training")
+    parser.add_argument("--fairness-target", default=0.03, type=float, help="Fairness target value")
+    parser.add_argument("--quality-target", default=0.05, type=float, help="Max gap loss for prediction quaility")
 
     return parser
 

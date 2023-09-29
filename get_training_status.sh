@@ -33,8 +33,20 @@ export CUDA_VISIBLE_DEVICES="0"
 # --attr-list Gender Age \
 # --pred-type categorical -o ./eval_FairFace_lr_1e_3_b2
 
+# python get_training_status.py \
+# --train-stats /tmp2/npfe/model_stats/FairFace_r_test/FairFace_r_test_train.npy \
+# --val-stats /tmp2/npfe/model_stats/FairFace_r_test/FairFace_r_test_val.npy \
+# --attr-list Race \
+# --pred-type categorical -o ./eval_FairFace_r_test -e 12
+
+# python get_training_status.py \
+# --train-stats /tmp2/npfe/model_stats/HAM10000_lr_5e_4_b2/train.npy \
+# --val-stats /tmp2/npfe/model_stats/HAM10000_lr_5e_4_b2/val.npy \
+# --attr-list Race \
+# --pred-type categorical -o ./eval_HAM10000_lr_5e_4_b2 -e 34
+
 python get_training_status.py \
---train-stats /tmp2/npfe/model_stats/FairFace_r_test/FairFace_r_test_train.npy \
---val-stats /tmp2/npfe/model_stats/FairFace_r_test/FairFace_r_test_val.npy \
+--train-stats /tmp2/npfe/model_stats/FairFace_lr_1e_3_b2/FairFace_lr_1e_3_b2_train.npy \
+--val-stats /tmp2/npfe/model_stats/FairFace_lr_1e_3_b2/FairFace_lr_1e_3_b2_val.npy \
 --attr-list Race \
---pred-type categorical -o ./eval_FairFace_r_test -e 12
+--pred-type categorical -o ./eval_FairFace_lr_1e_3_b2_mx -e 11

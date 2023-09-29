@@ -237,8 +237,16 @@ class Losses:
     loss_type: str
     fairness_criteria: str
     pred_type: str
-    out_feature: int = 0
+    dataset_name: str
     soft_label: bool = False
+
+    def __post_init__(self):
+        if self.pred_type == 'categorical':
+            match self.dataset_name:
+                case "UTKFace" | "HAM10000" | "FairFace":
+                    return
+                case _:
+                    assert False, "dataset name unsupported"
 
     # -------------------- cell mask --------------------
     def tp_cells(self, pred, label):
@@ -470,28 +478,17 @@ class Losses:
 
     # -------------------- losses (categorical) --------------------
     def categori_filter_logit(self, logit, batch_dim=0):
-        # check the out_feature match the logit shape
-        match (self.out_feature, batch_dim):
-            case (11, 0) | (16, 0) | (18, 0):
-                assert logit.shape[1] == self.out_feature, "model out feature mismatch"
-            case (11, 1) | (16, 1) | (18, 1):
-                assert logit.shape[2] == self.out_feature, "model out feature mismatch"
-            case _:
-                assert False, "check the model out feature"
-        # divide the logit
-        match (self.out_feature, batch_dim):
-            case (11, 0):
+        match (self.dataset_name, batch_dim):
+            case ("UTKFace", 0):
                 return logit[:,0:2], logit[:,2:11]
-            case (16, 0):
-                return logit[:,0:5], logit[:,5:7], logit[:,7:16]
-            case (18, 0):
-                return logit[:,0:7], logit[:,7:9], logit[:,9:18]
-            case (11, 1):
+            case ("UTKFace", 1):
                 return logit[:,:,0:2], logit[:,:,2:11]
-            case (16, 1):
-                return logit[:,:,0:5], logit[:,:,5:7], logit[:,:,7:16]
-            case (18, 1):
-                return logit[:,:,0:7], logit[:,:,7:9], logit[:,:,9:18]
+            case ("HAM10000", 0) | ("FairFace", 0):
+                return logit[:,0:7]
+            case ("HAM10000", 1) | ("FairFace", 1):
+                return logit[:,:,0:7]
+            case _:
+                assert False, "batch dimension must be 0 or 1"
     
     def categori_to_prediction(self, logit, batch_dim=0):
         # encode in index
@@ -505,84 +502,67 @@ class Losses:
         return pred
 
     def categori_direct_loss(self, logit, label, sens):
-        if self.out_feature == 11:
-            gender_logit, age_logit = self.categori_filter_logit(logit, batch_dim=0)
-            gender_pred, age_pred = map(self.categori_to_approx_prediction, [gender_logit, age_logit], [0,0])
-            gender_label, age_label = map(F.one_hot, [label[:,0], label[:,1]], [2,9])
-            gender_result, age_result = torch.sum(gender_pred*gender_label, dim=1), torch.sum(age_pred*age_label, dim=1)
-            result = torch.stack((gender_result, age_result), dim=1)
-        else:
-            race_logit, gender_logit, age_logit = self.categori_filter_logit(logit, batch_dim=0)
-            race_pred, gender_pred, age_pred = map(self.categori_to_approx_prediction, [race_logit, gender_logit, age_logit], [0,0,0])
-            if self.out_feature == 16:
-                race_label, gender_label, age_label = map(F.one_hot, [label[:,0], label[:,1], label[:,2]], [5,2,9])
-            elif self.out_feature == 18:
-                race_label, gender_label, age_label = map(F.one_hot, [label[:,0], label[:,1], label[:,2]], [7,2,9])
-            race_result, gender_result, age_result = torch.sum(race_pred*race_label, dim=1), torch.sum(gender_pred*gender_label, dim=1), torch.sum(age_pred*age_label, dim=1)
-            result = torch.stack((race_result, gender_result, age_result), dim=1)
+        match self.dataset_name:
+            case "UTKFace":
+                # Gender, Age
+                gender_logit, age_logit = self.categori_filter_logit(logit, batch_dim=0)
+                age_pred = self.categori_to_approx_prediction(logit=age_logit, batch_dim=0)
+                age_label = F.one_hot(label[:,1], num_classes=9)
+                result = torch.sum(age_pred*age_label, dim=1) # with shape (N)
+            case "HAM10000" | "FairFace":
+                # Case (Diagnosis)
+                case_logit = self.categori_filter_logit(logit, batch_dim=0)
+                case_pred = self.categori_to_approx_prediction(logit=case_logit, batch_dim=0)
+                case_label = F.one_hot(label[:,0], num_classes=7)
+                result = torch.sum(case_pred*case_label, dim=1) # with shape (N)
         group_1_result, group_2_result = regroup_tensor_categori(result, sens, regroup_dim=0)
         group_1_total, group_2_total = group_1_result.shape[0], group_2_result.shape[0]
-        # fairness target on age
-        if self.out_feature == 11:
-            group_1_acc, group_2_acc = group_1_result[:,1].sum()/(group_1_total+1e-9), group_2_result[:,1].sum()/(group_2_total+1e-9)
-        else:
-            group_1_acc, group_2_acc = group_1_result[:,2].sum()/(group_1_total+1e-9), group_2_result[:,2].sum()/(group_2_total+1e-9)
-        loss = torch.abs(group_1_acc-group_2_acc)
-        return torch.mean(loss)
+        group_1_acc, group_2_acc = group_1_result.sum()/(group_1_total+1e-9), group_2_result.sum()/(group_2_total+1e-9)
+        loss = torch.abs(group_1_acc-group_2_acc) # difference in accuracy
+        return loss # a single value
 
     def categori_masking_loss(self, logit, label, sens):
-        if self.out_feature == 11:
-            gender_logit, age_logit = self.categori_filter_logit(logit, batch_dim=0)
-            gender_pred, age_pred = map(self.categori_to_approx_prediction, [gender_logit, age_logit], [0,0])
-            gender_label, age_label = map(F.one_hot, [label[:,0], label[:,1]], [2,9])
-            gender_result, age_result = torch.sum(gender_pred*gender_label, dim=1), torch.sum(age_pred*age_label, dim=1)
-            result = torch.stack((gender_result, age_result), dim=1)
-        else:
-            race_logit, gender_logit, age_logit = self.categori_filter_logit(logit, batch_dim=0)
-            race_pred, gender_pred, age_pred = map(self.categori_to_approx_prediction, [race_logit, gender_logit, age_logit], [0,0,0])
-            if self.out_feature == 16:
-                race_label, gender_label, age_label = map(F.one_hot, [label[:,0], label[:,1], label[:,2]], [5,2,9])
-            elif self.out_feature == 18:
-                race_label, gender_label, age_label = map(F.one_hot, [label[:,0], label[:,1], label[:,2]], [7,2,9])
-            race_result, gender_result, age_result = torch.sum(race_pred*race_label, dim=1), torch.sum(gender_pred*gender_label, dim=1), torch.sum(age_pred*age_label, dim=1)
-            result = torch.stack((race_result, gender_result, age_result), dim=1)
+        match self.dataset_name:
+            case "UTKFace":
+                # Gender, Age
+                gender_logit, age_logit = self.categori_filter_logit(logit, batch_dim=0)
+                age_pred = self.categori_to_approx_prediction(logit=age_logit, batch_dim=0)
+                age_label = F.one_hot(label[:,1], num_classes=9)
+                result = torch.sum(age_pred*age_label, dim=1) # with shape (N)
+                loss_CE = F.cross_entropy(age_logit, label[:,1], reduction='none') # with shape (N)
+            case "HAM10000" | "FairFace":
+                # Case (Diagnosis)
+                case_logit = self.categori_filter_logit(logit, batch_dim=0)
+                case_pred = self.categori_to_approx_prediction(logit=case_logit, batch_dim=0)
+                case_label = F.one_hot(label[:,0], num_classes=7)
+                result = torch.sum(case_pred*case_label, dim=1) # with shape (N)
+                loss_CE = F.cross_entropy(case_logit, label[:,0], reduction='none') # with shape (N)
         group_1_result, group_2_result = regroup_tensor_categori(result, sens, regroup_dim=0)
         group_1_total, group_2_total = group_1_result.shape[0], group_2_result.shape[0]
-        # fairness target on age
-        if self.out_feature == 11:
-            group_1_acc, group_2_acc = group_1_result[:,1].sum()/(group_1_total+1e-9), group_2_result[:,1].sum()/(group_2_total+1e-9)
-            loss_CE_age = F.cross_entropy(age_logit, label[:,1], reduction='none')
-        else:
-            group_1_acc, group_2_acc = group_1_result[:,2].sum()/(group_1_total+1e-9), group_2_result[:,2].sum()/(group_2_total+1e-9)
-            loss_CE_age = F.cross_entropy(age_logit, label[:,2], reduction='none')
-        group_1_coef, group_2_coef = torch.where(group_1_acc > group_2_acc, -1 ,0), torch.where(group_2_acc > group_1_acc, -1 ,0)
-        group_1_CE, group_2_CE = regroup_tensor_categori(loss_CE_age, sens, regroup_dim=0)
-        loss = torch.cat((group_1_CE*group_1_coef, group_2_CE*group_2_coef), 0) # in shape (N)
+        group_1_acc, group_2_acc = group_1_result.sum()/(group_1_total+1e-9), group_2_result.sum()/(group_2_total+1e-9)
+        group_1_coef, group_2_coef = torch.where(group_1_acc < group_2_acc, 1, 0), torch.where(group_2_acc < group_1_acc, 1, 0)
+        group_1_CE, group_2_CE = regroup_tensor_categori(loss_CE, sens, regroup_dim=0)
+        loss = torch.cat((group_1_CE*group_1_coef, group_2_CE*group_2_coef), 0) # with shape (N)
         return torch.mean(loss)
 
     def categori_perturb_loss(self, logit, label, sens):
         def perturbed_pq(x, label=label):
-            if self.out_feature == 11:
-                gender_logit, age_logit = self.categori_filter_logit(x, batch_dim=1)
-                gender_pred, age_pred = map(self.categori_to_prediction, [gender_logit, age_logit], [1,1])
-                label_duped = label.repeat(x.shape[0], 1, 1)
-                gender_label, age_label = label_duped[:,:,0], label_duped[:,:,1]
-                gender_result, age_result = torch.eq(gender_pred, gender_label), torch.eq(age_pred, age_label)
-                result = torch.stack((gender_result, age_result), dim=2)
-            else:
-                race_logit, gender_logit, age_logit = self.categori_filter_logit(x, batch_dim=1)
-                race_pred, gender_pred, age_pred = map(self.categori_to_prediction, [race_logit, gender_logit, age_logit], [0,0,0])
-                label_duped = label.repeat(x.shape[0], 1, 1)
-                race_label, gender_label, age_label = label_duped[:,:,0], label_duped[:,:,1], label_duped[:,:,2]
-                race_result, gender_result, age_result = torch.sum(torch.eq(race_pred, race_label), dim=1), torch.sum(torch.eq(gender_pred, gender_label), dim=1), torch.sum(torch.eq(age_pred, age_label), dim=1)
-                result = torch.stack((race_result, gender_result, age_result), dim=2)
+            match self.dataset_name:
+                case "UTKFace":
+                    # Gender, Age
+                    gender_logit, age_logit = self.categori_filter_logit(x, batch_dim=1) # logit in shape (P, N)
+                    age_pred = self.categori_to_prediction(logit=age_logit, batch_dim=1)
+                    age_label_duped = label[:,1].repeat(x.shape[0], 1) # to shape (P, N)
+                    result = torch.eq(age_pred, age_label_duped) # with shape (P, N)
+                case "HAM10000" | "FairFace":
+                    # Case (Diagnosis)
+                    case_logit = self.categori_filter_logit(x, batch_dim=1) # logit in shape (P, N)
+                    case_pred = self.categori_to_prediction(logit=case_logit, batch_dim=1)
+                    case_label_duped = label[:,0].repeat(x.shape[0], 1) # to shape (P, N)
+                    result = torch.eq(case_pred, case_label_duped) # with shape (P, N)
             group_1_result, group_2_result = regroup_tensor_categori(result, sens, regroup_dim=1)
             group_1_total, group_2_total = group_1_result.shape[1], group_2_result.shape[1]
-            # fairness target on age
-            if self.out_feature == 11:
-                group_1_acc, group_2_acc = torch.sum(group_1_result[:,:,1], dim=1)/(group_1_total+1e-9), torch.sum(group_2_result[:,:,1], dim=1)/(group_2_total+1e-9)
-            else:
-                group_1_acc, group_2_acc = torch.sum(group_1_result[:,:,2], dim=1)/(group_1_total+1e-9), torch.sum(group_2_result[:,:,2], dim=1)/(group_2_total+1e-9)
+            group_1_acc, group_2_acc = torch.sum(group_1_result, dim=1)/(group_1_total+1e-9), torch.sum(group_2_result, dim=1)/(group_2_total+1e-9)
             perturbed_loss = torch.abs(group_1_acc-group_2_acc)
             return perturbed_loss
         # Turns a function into a differentiable one via perturbations
@@ -592,32 +572,27 @@ class Losses:
                              noise='gumbel',
                              batched=False)
         # loss perturbed_loss
-        loss = pret_pq(logit)
-        return torch.mean(loss)
+        loss = pret_pq(logit) # a single value
+        return loss
 
     def categori_accuracy_perturb_loss(self, logit, label, sens, coef):
         def perturb_acc(x, label=label):
-            if self.out_feature == 11:
-                gender_logit, age_logit = self.categori_filter_logit(x, batch_dim=1)
-                gender_pred, age_pred = map(self.categori_to_prediction, [gender_logit, age_logit], [1,1])
-                label_duped = label.repeat(x.shape[0], 1, 1)
-                gender_label, age_label = label_duped[:,:,0], label_duped[:,:,1]
-                gender_result, age_result = torch.eq(gender_pred, gender_label), torch.eq(age_pred, age_label)
-                result = torch.stack((gender_result, age_result), dim=2)
-            else:
-                race_logit, gender_logit, age_logit = self.categori_filter_logit(x, batch_dim=1)
-                race_pred, gender_pred, age_pred = map(self.categori_to_prediction, [race_logit, gender_logit, age_logit], [0,0,0])
-                label_duped = label.repeat(x.shape[0], 1, 1)
-                race_label, gender_label, age_label = label_duped[:,:,0], label_duped[:,:,1], label_duped[:,:,2]
-                race_result, gender_result, age_result = torch.sum(torch.eq(race_pred, race_label), dim=1), torch.sum(torch.eq(gender_pred, gender_label), dim=1), torch.sum(torch.eq(age_pred, age_label), dim=1)
-                result = torch.stack((race_result, gender_result, age_result), dim=2)
+            match self.dataset_name:
+                case "UTKFace":
+                    # Gender, Age
+                    gender_logit, age_logit = self.categori_filter_logit(x, batch_dim=1) # logit in shape (P, N)
+                    age_pred = self.categori_to_prediction(logit=age_logit, batch_dim=1)
+                    age_label_duped = label[:,1].repeat(x.shape[0], 1) # to shape (P, N)
+                    result = torch.eq(age_pred, age_label_duped) # with shape (P, N)
+                case "HAM10000" | "FairFace":
+                    # Case (Diagnosis)
+                    case_logit = self.categori_filter_logit(x, batch_dim=1) # logit in shape (P, N)
+                    case_pred = self.categori_to_prediction(logit=case_logit, batch_dim=1)
+                    case_label_duped = label[:,0].repeat(x.shape[0], 1) # to shape (P, N)
+                    result = torch.eq(case_pred, case_label_duped) # with shape (P, N)
             group_1_result, group_2_result = regroup_tensor_categori(result, sens, regroup_dim=1)
             group_1_total, group_2_total = group_1_result.shape[1], group_2_result.shape[1]
-            # accuracy of age
-            if self.out_feature == 11:
-                group_1_acc, group_2_acc = torch.sum(group_1_result[:,:,1], dim=1)/(group_1_total+1e-9), torch.sum(group_2_result[:,:,1], dim=1)/(group_2_total+1e-9)
-            else:
-                group_1_acc, group_2_acc = torch.sum(group_1_result[:,:,2], dim=1)/(group_1_total+1e-9), torch.sum(group_2_result[:,:,2], dim=1)/(group_2_total+1e-9)
+            group_1_acc, group_2_acc = torch.sum(group_1_result, dim=1)/(group_1_total+1e-9), torch.sum(group_2_result, dim=1)/(group_2_total+1e-9)
             perturbed_loss = ((1 - group_1_acc) + (1 - group_2_acc))
             return perturbed_loss
         # Turns a function into a differentiable one via perturbations
@@ -626,10 +601,10 @@ class Losses:
                              sigma=0.5,
                              noise='gumbel',
                              batched=False)
-        loss_per_attr = pret_acc(logit)*coef
-        return torch.mean(loss_per_attr)
+        loss = pret_acc(logit)*coef
+        return loss
 
-    def run(self, logit, label, sens, coef=None, n_coef=None):
+    def run(self, logit, label, sens, coef, n_coef=None):
         recovery_loss = 0
         if self.pred_type == 'binary':
             if len(coef) and sum(coef) > 0:
@@ -655,14 +630,14 @@ class Losses:
             if len(coef) and sum(coef) > 0:
                 match self.loss_type:
                     case 'direct' | 'masking' | 'perturb optim':
-                        if self.out_feature == 11:
-                            _, age_logit = self.categori_filter_logit(logit, batch_dim=0)
-                            loss_CE_age = F.cross_entropy(age_logit, label[:,1], reduction='none')
-                        else:
-                            _, _, age_logit = self.categori_filter_logit(logit, batch_dim=0)
-                            loss_CE_age = F.cross_entropy(age_logit, label[:,2], reduction='none')
-                        loss_CE_age_per_attr = torch.mean(loss_CE_age, dim=0)
-                        recovery_loss = torch.mean(coef*loss_CE_age)
+                        match self.dataset_name:
+                            case "UTKFace":
+                                _, age_logit = self.categori_filter_logit(logit, batch_dim=0)
+                                loss_CE = F.cross_entropy(age_logit, label[:,1], reduction='none') # with shape (N)
+                            case "HAM10000" | "FairFace":
+                                case_logit = self.categori_filter_logit(logit, batch_dim=0)
+                                loss_CE = F.cross_entropy(case_logit, label[:,0], reduction='none') # with shape (N)
+                        recovery_loss = torch.mean(loss_CE, dim=0) * coef
                     case 'full perturb optim':
                         recovery_loss = self.categori_accuracy_perturb_loss(logit, label, sens, coef)
             match self.loss_type:
