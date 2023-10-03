@@ -23,6 +23,8 @@ def main(args):
     celeba = CelebA(batch_size=args.batch_size, attr_list=all_attr_list)
     train_dataloader = celeba.train_dataloader
     val_dataloader = celeba.val_dataloader
+    print(f'Training dataset contain {len(train_dataloader)*args.batch_size} images')
+    print(f'Validation dataset contain {len(val_dataloader)*args.batch_size} images')
 
     # model, optimizer, and scheduler
     attr_count = len(args.attr_list)
@@ -137,8 +139,8 @@ def main(args):
         # save model checkpoint
         save_model(model, optimizer, scheduler, name=f'{epoch:04d}', root_folder=model_ckpt_path)
     # save basic statistic
-    save_stats(train_stat, f'{args.model_name}_train', root_folder=model_stat_path)
-    save_stats(val_stat, f'{args.model_name}_val', root_folder=model_stat_path)
+    save_stats(train_stat, f'train', root_folder=model_stat_path)
+    save_stats(val_stat, f'val', root_folder=model_stat_path)
     total_time = time.time() - start_time
     print(f'Training time: {total_time/60:.4f} mins')
 

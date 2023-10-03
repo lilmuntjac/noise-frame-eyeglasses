@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # select GPUs on the server
-export CUDA_VISIBLE_DEVICES="0"
+export CUDA_VISIBLE_DEVICES="2"
 
 # python model_celeba.py --model-name CelebA_attr39 \
 # --attr-list 5_o_Clock_Shadow Arched_Eyebrows Attractive Bags_Under_Eyes Bald Bangs \
@@ -13,7 +13,7 @@ export CUDA_VISIBLE_DEVICES="0"
 #             Wearing_Hat Wearing_Lipstick Wearing_Necklace Wearing_Necktie Young \
 # -b 256 --epochs 10 --lr 1e-3
 
-# choose epoch 25
-python model_celeba.py --model-name CelebA_lr_1e_3_b1 \
+# choose epoch 27
+python model_celeba.py --model-name CelebA_lr_2e_3_b2 \
 --attr-list Attractive High_Cheekbones Mouth_Slightly_Open Smiling \
--b 256 --epochs 40 --lr 1e-3
+-b 256 --epochs 40 --lr 2e-3
