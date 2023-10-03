@@ -21,6 +21,8 @@ def main(args):
     utkface = UTKFace(batch_size=args.batch_size)
     train_dataloader = utkface.train_dataloader
     val_dataloader = utkface.val_dataloader
+    print(f'Training dataset contain {len(train_dataloader)*args.batch_size} images')
+    print(f'Validation dataset contain {len(val_dataloader)*args.batch_size} images')
 
     # model, optimizer, and scheduler
     attr_count = len(args.attr_list)
@@ -67,22 +69,24 @@ def main(args):
             train_stat = train_stat+stat if len(train_stat) else stat
         return train_stat # in shape (1, attribute, 8)
 
-    def val():
+    def val(times=1):
         val_stat = np.array([])
         model.eval()
         with torch.no_grad():
-            # validaton loop
-            for batch_idx, (data, raw_label) in enumerate(val_dataloader):
-                raw_label = raw_label.to(torch.float32)
-                label, sens = torch.where(raw_label[:,2:3]>3, 1.0, 0.0), raw_label[:,0:1]       
-                data, label, sens = data.to(device), label.to(device), sens.to(device)
-                instance = normalize(data)
-                logit = model(instance)
-                # collecting performance information
-                pred = to_prediction(logit)
-                stat = calc_groupcm_soft(pred, label, sens)
-                stat = stat[np.newaxis, :]
-                val_stat = val_stat+stat if len(val_stat) else stat
+            # validation may run more than one time per epoch
+            for _ in range(times):
+                # validaton loop
+                for batch_idx, (data, raw_label) in enumerate(val_dataloader):
+                    raw_label = raw_label.to(torch.float32)
+                    label, sens = torch.where(raw_label[:,2:3]>3, 1.0, 0.0), raw_label[:,0:1]       
+                    data, label, sens = data.to(device), label.to(device), sens.to(device)
+                    instance = normalize(data)
+                    logit = model(instance)
+                    # collecting performance information
+                    pred = to_prediction(logit)
+                    stat = calc_groupcm_soft(pred, label, sens)
+                    stat = stat[np.newaxis, :]
+                    val_stat = val_stat+stat if len(val_stat) else stat
             return val_stat # in shape (1, attribute, 8)
     # summarize the status in validation set for some adjustment
     def get_stats_per_epoch(stat):
@@ -125,7 +129,7 @@ def main(args):
         epoch_start = time.time()
         train_stat_per_epoch = train()
         # scheduler.step()
-        val_stat_per_epoch = val()
+        val_stat_per_epoch = val(times=4)
         epoch_time = time.time() - epoch_start
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
@@ -135,8 +139,8 @@ def main(args):
         # save model checkpoint
         save_model(model, optimizer, scheduler, name=f'{epoch:04d}', root_folder=model_ckpt_path)
     # save basic statistic
-    save_stats(train_stat, f'{args.model_name}_train', root_folder=model_stat_path)
-    save_stats(val_stat, f'{args.model_name}_val', root_folder=model_stat_path)
+    save_stats(train_stat, f'train', root_folder=model_stat_path)
+    save_stats(val_stat, f'val', root_folder=model_stat_path)
     total_time = time.time() - start_time
     print(f'Training time: {total_time/60:.4f} mins')
 

@@ -21,6 +21,8 @@ def main(args):
     ham10000 = HAM10000(batch_size=args.batch_size)
     train_dataloader = ham10000.train_dataloader
     val_dataloader = ham10000.val_dataloader
+    print(f'Training dataset contain {len(train_dataloader)*args.batch_size} images')
+    print(f'Validation dataset contain {len(val_dataloader)*args.batch_size} images')
 
     # model, optimizer, and scheduler
     print(f'Calling model predicting case')
@@ -64,21 +66,23 @@ def main(args):
             train_stat = train_stat+stat if len(train_stat) else stat
         return train_stat # in shape (1, ?, 4), ?: race + gender + age, 4: split in 2 groups x (right and wrong)
 
-    def val():
+    def val(times=1):
         val_stat = np.array([])
         model.eval()
         with torch.no_grad():
-            # validaton loop
-            for batch_idx, (data, raw_label) in enumerate(val_dataloader):
-                label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: case, sensitive attribute: gender
-                data, label, sens = data.to(device), label.to(device), sens.to(device)
-                instance = normalize(data)
-                logit = model(instance)
-                # collecting performance information
-                pred = to_prediction(logit)
-                stat = calc_groupacc(pred, label, sens)
-                stat = stat[np.newaxis, :]
-                val_stat = val_stat+stat if len(val_stat) else stat
+            # validation may run more than one time per epoch
+            for _ in range(times):
+                # validaton loop
+                for batch_idx, (data, raw_label) in enumerate(val_dataloader):
+                    label, sens = raw_label[:,0:1], raw_label[:,1:2] # label: case, sensitive attribute: gender
+                    data, label, sens = data.to(device), label.to(device), sens.to(device)
+                    instance = normalize(data)
+                    logit = model(instance)
+                    # collecting performance information
+                    pred = to_prediction(logit)
+                    stat = calc_groupacc(pred, label, sens)
+                    stat = stat[np.newaxis, :]
+                    val_stat = val_stat+stat if len(val_stat) else stat
             return val_stat # in shape (1, ?, 4), ?: race + gender + age, 4: split in 2 groups x (right and wrong)
     # summarize the status in validation set for some adjustment
     def get_stats_per_epoch(stat):
@@ -114,7 +118,7 @@ def main(args):
         epoch_start = time.perf_counter()
         train_stat_per_epoch = train()
         # scheduler.step()
-        val_stat_per_epoch = val()
+        val_stat_per_epoch = val(times=11)
         epoch_time = time.perf_counter() - epoch_start
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch

@@ -99,23 +99,25 @@ def main(args):
             train_stat = train_stat+stat if len(train_stat) else stat
         return train_stat # in shape (1, attribute, 8)
     
-    def val(dataloader=val_dataloader):
+    def val(dataloader=val_dataloader, times=1):
         val_stat = np.array([])
         model.eval()
         with torch.no_grad():
-            # validaton loop
-            for batch_idx, (data, raw_label) in enumerate(dataloader):
-                data, raw_label = data.to(device), raw_label.to(device)
-                # tweak on data
-                data, raw_label = tweaker.apply(data, raw_label, adv_component)
-                label, sens = raw_label[:,:-1], raw_label[:,-1:None]
-                instance = normalize(data)
-                logit = model(instance)
-                # collecting performance information
-                pred = to_prediction(logit)
-                stat = calc_groupcm_soft(pred, label, sens)
-                stat = stat[np.newaxis, :]
-                val_stat = val_stat+stat if len(val_stat) else stat
+            # validation may run more than one time per epoch
+            for _ in range(times):
+                # validaton loop
+                for batch_idx, (data, raw_label) in enumerate(dataloader):
+                    data, raw_label = data.to(device), raw_label.to(device)
+                    # tweak on data
+                    data, raw_label = tweaker.apply(data, raw_label, adv_component)
+                    label, sens = raw_label[:,:-1], raw_label[:,-1:None]
+                    instance = normalize(data)
+                    logit = model(instance)
+                    # collecting performance information
+                    pred = to_prediction(logit)
+                    stat = calc_groupcm_soft(pred, label, sens)
+                    stat = stat[np.newaxis, :]
+                    val_stat = val_stat+stat if len(val_stat) else stat
             return val_stat # in shape (1, attribute, 8)
     # summarize the status in validation set for some adjustment
     def get_stats_per_epoch(stat):
@@ -157,8 +159,8 @@ def main(args):
     if not args.resume:
         empty_time = time.time()
         print(f'collecting statistic for empty tweaks')
-        train_stat_per_epoch = val(train_dataloader)
-        val_stat_per_epoch = val()
+        train_stat_per_epoch = val(train_dataloader, times=1)
+        val_stat_per_epoch = val(times=1)
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
         show_stats_per_epoch(train_stat_per_epoch, val_stat_per_epoch)
@@ -169,7 +171,7 @@ def main(args):
         epoch_start = time.time()
         train_stat_per_epoch = train()
         # scheduler.step()
-        val_stat_per_epoch = val()
+        val_stat_per_epoch = val(times=1)
         epoch_time = time.time() - epoch_start
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch

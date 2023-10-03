@@ -44,9 +44,9 @@ def main(args):
     print(f'Preparation done in {total_time:.4f} secs')
 
     def to_prediction(logit):
-    # conert binary logit into prediction
-    pred = torch.where(logit > 0.5, 1, 0)
-    return pred
+        # conert binary logit into prediction
+        pred = torch.where(logit > 0.5, 1, 0)
+        return pred
 
     def train():
         train_stat = np.array([])
@@ -132,8 +132,8 @@ def main(args):
         # save model checkpoint
         save_model(model, optimizer, scheduler, name=f'{epoch:04d}', root_folder=model_ckpt_path)
     # save basic statistic
-    save_stats(train_stat, f'{args.model_name}_train', root_folder=model_stat_path)
-    save_stats(val_stat, f'{args.model_name}_val', root_folder=model_stat_path)
+    save_stats(train_stat, f'train', root_folder=model_stat_path)
+    save_stats(val_stat, f'val', root_folder=model_stat_path)
     total_time = time.time() - start_time
     print(f'Training time: {total_time/60:.4f} mins')
 
