@@ -12,7 +12,7 @@ class Visualizer:
     attr_list: list[str] | None = None
     marker: str = '.'
     markersize: int = 1
-    annotation_gap: int = 5
+    annotation_gap: int = 3
     
     def resolve_fairness(self, stats):
         def get_binary_stats_per_epoch(stats_per_epoch):
@@ -89,7 +89,7 @@ class Visualizer:
             if train_stats.size > 0:
                 train_stats_dict = self.resolve_fairness(train_stats)
             # draw the triple chart
-            fig, axs  = plt.subplots(1,3, figsize=(24,8), layout='constrained')
+            fig, axs  = plt.subplots(1,3, figsize=(36,12), layout='constrained')
             epoch_axis = np.linspace(0, length-1, length) if length else np.linspace(0, val_stats.shape[0]-1, val_stats.shape[0])
             # left chart - accuracy  / epoch
             val_tacc, = axs[0].plot(epoch_axis, val_stats_dict['total_accuracy'][:epoch_axis.shape[0],attr_idx], 

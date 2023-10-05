@@ -3,6 +3,6 @@
 # select GPUs on the server
 export CUDA_VISIBLE_DEVICES="0"
 
-# choose epoch 34
-python model_ham10000.py --model-name HAM10000_lr_5e_4_b2 \
--b 256 --epochs 75 --lr 5e-4
+# choose epoch 60
+python model_ham10000.py --model-name HAM10000_0_lr_1e_2_b1 \
+-b 128 --epochs 70 --lr 1e-2

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # select GPUs on the server
-export CUDA_VISIBLE_DEVICES="2"
+export CUDA_VISIBLE_DEVICES="0"
 
 # python model_celeba.py --model-name CelebA_attr39 \
 # --attr-list 5_o_Clock_Shadow Arched_Eyebrows Attractive Bags_Under_Eyes Bald Bangs \

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # select GPUs on the server
-export CUDA_VISIBLE_DEVICES="2"
+export CUDA_VISIBLE_DEVICES="0"
 
-# choose epoch 19
-python model_utkface.py --model-name UTKFace_lr_2e_3_b1 \
--b 128 --epochs 40 --lr 2e-3
+# choose epoch 12
+python model_utkface.py --model-name UTKFace_3_lr_1e_3_b1 \
+-b 128 --epochs 30 --lr 1e-3
