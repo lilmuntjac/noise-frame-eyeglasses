@@ -57,6 +57,7 @@ class MAADFaceHQ:
 
     batch_size: int = 128
     attr_list: list[str] = field(default_factory=list)
+    augmented: bool = True
     root: str = '/tmp2/dataset/MAADFace_HQ'
     train_csv: str = '/tmp2/dataset/MAADFace_HQ/MAADFace_HQ_train.csv'
     test_csv: str = '/tmp2/dataset/MAADFace_HQ/MAADFace_HQ_test.csv'
@@ -87,14 +88,18 @@ class MAADFaceHQ:
                 # transforms.Normalize(mean, std),
             ])
         # select the dataset source
-        train_dataset = MAADFaceHQDataset(self.train_csv, self.root+'/train', 
-            attr_list=self.attr_list, transform=train_transform)
+        if self.augmented:
+            train_dataset = MAADFaceHQDataset(self.train_csv, self.root+'/train', 
+                attr_list=self.attr_list, transform=train_transform)
+        else:
+            train_dataset = MAADFaceHQDataset(self.train_csv, self.root+'/train', 
+                attr_list=self.attr_list, transform=test_transform)
         test_dataset = MAADFaceHQDataset(self.test_csv, self.root+'/test', 
             attr_list=self.attr_list, transform=test_transform)
         self.train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, 
             shuffle=True, num_workers=20, pin_memory=True, drop_last=True,)
         self.test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, 
-            shuffle=True, num_workers=20, pin_memory=True, drop_last=True,)
+            shuffle=False, num_workers=20, pin_memory=True, drop_last=False,)
 
 #
 # -------------------- CelebA dataset --------------------
@@ -151,6 +156,7 @@ class CelebA:
 
     batch_size: int = 128
     attr_list: list[str] = field(default_factory=list)
+    augmented: bool = True
     root: str = '/tmp2/dataset/celeba'
     mean: Tuple = (0.485, 0.456, 0.406)
     std: Tuple = (0.229, 0.224, 0.225)
@@ -177,14 +183,18 @@ class CelebA:
             # transforms.Normalize(mean, std),
         ])
         # dataset source from pytorch official
-        train_dataset = CelebADataset(root=self.root, split='train', target_type='attr', 
-            attr_list=self.attr_list, transform=train_transform, download=False)
+        if self.augmented:
+            train_dataset = CelebADataset(root=self.root, split='train', target_type='attr', 
+                attr_list=self.attr_list, transform=train_transform, download=False)
+        else:
+            train_dataset = CelebADataset(root=self.root, split='train', target_type='attr', 
+                attr_list=self.attr_list, transform=val_transform, download=False)
         val_dataset = CelebADataset(root=self.root, split='valid', target_type='attr', 
             attr_list=self.attr_list, transform=val_transform, download=False)
         self.train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size,
             shuffle=True, num_workers=20, pin_memory=True, drop_last=True,)
         self.val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, 
-            shuffle=True, num_workers=20, pin_memory=True, drop_last=True,)
+            shuffle=False, num_workers=20, pin_memory=True, drop_last=False,)
 
 #
 # -------------------- UTKFace dataset --------------------
@@ -238,6 +248,7 @@ class UTKFace:
     """
 
     batch_size: int = 128
+    augmented: bool = True
     root: str = '/tmp2/dataset/UTKFace'
     train_csv: str = '/tmp2/dataset/UTKFace/utkface_train.csv'
     val_csv: str = '/tmp2/dataset/UTKFace/utkface_val.csv'
@@ -269,12 +280,15 @@ class UTKFace:
                 # transforms.Normalize(mean, std),
             ])
         # select the dataset race definition
-        train_dataset = UTKFaceDataset(self.train_csv, self.root, transform=train_transform, race_def=self.race_def)
+        if self.augmented:
+            train_dataset = UTKFaceDataset(self.train_csv, self.root, transform=train_transform, race_def=self.race_def)
+        else:
+            train_dataset = UTKFaceDataset(self.train_csv, self.root, transform=val_transform, race_def=self.race_def)
         val_dataset = UTKFaceDataset(self.val_csv, self.root, transform=val_transform, race_def=self.race_def)
         self.train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, 
             shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
         self.val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, 
-            shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
+            shuffle=False, num_workers=12, pin_memory=True, drop_last=False,)
 
 #
 # -------------------- FairFace dataset --------------------
@@ -322,6 +336,7 @@ class FairFace:
     """
 
     batch_size: int = 128
+    augmented: bool = True
     root: str = '/tmp2/dataset/fairface-img-margin025-trainval'
     train_csv: str = '/tmp2/dataset/fairface-img-margin025-trainval/fairface_label_train.csv'
     val_csv: str = '/tmp2/dataset/fairface-img-margin025-trainval/fairface_label_val.csv'
@@ -353,12 +368,15 @@ class FairFace:
                 # transforms.Normalize(mean, std),
             ])
         # select the dataset race definition
-        train_dataset = FairFaceDataset(self.train_csv, self.root, transform=train_transform, race_def=self.race_def)
+        if self.augmented:
+            train_dataset = FairFaceDataset(self.train_csv, self.root, transform=train_transform, race_def=self.race_def)
+        else:
+            train_dataset = FairFaceDataset(self.train_csv, self.root, transform=val_transform, race_def=self.race_def)
         val_dataset = FairFaceDataset(self.val_csv, self.root, transform=val_transform, race_def=self.race_def)
         self.train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, \
             shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
         self.val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, \
-            shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
+            shuffle=False, num_workers=12, pin_memory=True, drop_last=False,)
 
 #
 # -------------------- HAM10000 dataset --------------------
@@ -397,6 +415,7 @@ class HAM10000:
     """
 
     batch_size: int = 128
+    augmented: bool = True
     root: str = '/tmp2/dataset/HAM10000'
     train_csv: str = '/tmp2/dataset/HAM10000/ham10000_train.csv'
     val_csv: str = '/tmp2/dataset/HAM10000/ham10000_val.csv'
@@ -426,9 +445,12 @@ class HAM10000:
                 # we decided to normalize the image right before passing it into the model
                 # transforms.Normalize(mean, std),
             ])
-        train_dataset = HAM10000Dataset(self.train_csv, self.root+'/train',transform=train_transform)
+        if self.augmented:
+            train_dataset = HAM10000Dataset(self.train_csv, self.root+'/train',transform=train_transform)
+        else:
+            train_dataset = HAM10000Dataset(self.train_csv, self.root+'/train',transform=val_transform)
         val_dataset = HAM10000Dataset(self.val_csv, self.root+'/train', transform=val_transform)
         self.train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, \
             shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
         self.val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, \
-            shuffle=True, num_workers=12, pin_memory=True, drop_last=True,)
+            shuffle=False, num_workers=12, pin_memory=True, drop_last=False,)
