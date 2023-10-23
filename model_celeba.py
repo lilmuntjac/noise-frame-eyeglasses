@@ -13,7 +13,7 @@ def main(args):
     print('Pytorch is running on version: ' + torch.__version__)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
@@ -42,7 +42,7 @@ def main(args):
         val_stat = load_stats(name=args.model_name+'_val', root_folder=model_stat_path)
     else:
         train_stat, val_stat = np.array([]), np.array([])
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     print(f'Preparation done in {total_time:.4f} secs')
 
     def to_prediction(logit):
@@ -71,24 +71,22 @@ def main(args):
             train_stat = train_stat+stat if len(train_stat) else stat
         return train_stat # in shape (1, attribute, 8)
 
-    def val(times=1):
+    def val():
         val_stat = np.array([])
         model.eval()
         with torch.no_grad():
-            # validation may run more than one time per epoch
-            for _ in range(times):
-                # validaton loop
-                for batch_idx, (data, raw_label) in enumerate(val_dataloader):
-                    raw_label = raw_label.to(torch.float32)
-                    label, sens = raw_label[:,:-1], raw_label[:,-1:None]            
-                    data, label, sens = data.to(device), label.to(device), sens.to(device)
-                    instance = normalize(data)
-                    logit = model(instance)
-                    # collecting performance information
-                    pred = to_prediction(logit)
-                    stat = calc_groupcm_soft(pred, label, sens)
-                    stat = stat[np.newaxis, :]
-                    val_stat = val_stat+stat if len(val_stat) else stat
+            # validaton loop
+            for batch_idx, (data, raw_label) in enumerate(val_dataloader):
+                raw_label = raw_label.to(torch.float32)
+                label, sens = raw_label[:,:-1], raw_label[:,-1:None]            
+                data, label, sens = data.to(device), label.to(device), sens.to(device)
+                instance = normalize(data)
+                logit = model(instance)
+                # collecting performance information
+                pred = to_prediction(logit)
+                stat = calc_groupcm_soft(pred, label, sens)
+                stat = stat[np.newaxis, :]
+                val_stat = val_stat+stat if len(val_stat) else stat
             return val_stat # in shape (1, attribute, 8)
     # summarize the status in validation set for some adjustment
     def get_stats_per_epoch(stat):
@@ -125,14 +123,14 @@ def main(args):
 
     # Run the code
     print(f'Start training model')
-    start_time = time.time()
+    start_time = time.perf_counter()
 
     for epoch in range(args.start_epoch, args.epochs):
-        epoch_start = time.time()
+        epoch_start = time.perf_counter()
         train_stat_per_epoch = train()
         # scheduler.step()
-        val_stat_per_epoch = val(times=1)
-        epoch_time = time.time() - epoch_start
+        val_stat_per_epoch = val()
+        epoch_time = time.perf_counter() - epoch_start
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
@@ -143,7 +141,7 @@ def main(args):
     # save basic statistic
     save_stats(train_stat, f'train', root_folder=model_stat_path)
     save_stats(val_stat, f'val', root_folder=model_stat_path)
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     print(f'Training time: {total_time/60:.4f} mins')
 
 def get_args():

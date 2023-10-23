@@ -27,6 +27,7 @@ class Tweaker:
     circle_rotation: float = 0.083
     circle_ratio: tuple[float, float] = (0.02, 0.03)
     frame_thickness: float = 0.25
+    provide_theta: bool = True
     face_detector: dlib.cnn_face_detection_model_v1 = \
         dlib.cnn_face_detection_model_v1('./dlib_models/mmod_human_face_detector.dat')
     shape_predictor: dlib.shape_predictor = \
@@ -181,7 +182,7 @@ class Tweaker:
         return theta.to(self.device)
 
     # --------------------  --------------------
-    def apply(self, data, label, element):
+    def apply(self, data, label, element, theta=None):
         match self.tweak_type:
             case 'noise':
                 tweak_data = self.add(data, element)
@@ -207,17 +208,26 @@ class Tweaker:
                 inv_mask = 1 - xform_mask
                 tweak_data = data*inv_mask + xform_component*xform_mask
             case 'eyeglasses':
-                # so far only this method remove some data that fail on face detector
-                filtered_data, filtered_label, landmark = self.get_landmark(data, label)
-                theta = self.set_eyeglasses_transform(landmark)
-                mask = self.mask.repeat(filtered_data.shape[0], 1, 1, 1)
-                element = element.repeat(filtered_data.shape[0], 1, 1, 1)
-                grid = F.affine_grid(theta, filtered_data.shape, align_corners=False)
-                xform_mask = F.grid_sample(mask, grid, align_corners=False)
-                xform_component = F.grid_sample(element, grid, mode='bilinear', align_corners=False)
-                inv_mask = 1 - xform_mask
-                tweak_data = filtered_data*inv_mask + xform_component*xform_mask
-                label = filtered_label
+                if  self.provide_theta:
+                    mask = self.mask.repeat(data.shape[0], 1, 1, 1)
+                    element = element.repeat(data.shape[0], 1, 1, 1)
+                    grid = F.affine_grid(theta, data.shape, align_corners=False)
+                    xform_mask = F.grid_sample(mask, grid, align_corners=False)
+                    xform_component = F.grid_sample(element, grid, mode='bilinear', align_corners=False)
+                    inv_mask = 1 - xform_mask
+                    tweak_data = data*inv_mask + xform_component*xform_mask
+                else:
+                    # so far only this method remove some data that fail on face detector
+                    filtered_data, filtered_label, landmark = self.get_landmark(data, label)
+                    theta = self.set_eyeglasses_transform(landmark)
+                    mask = self.mask.repeat(filtered_data.shape[0], 1, 1, 1)
+                    element = element.repeat(filtered_data.shape[0], 1, 1, 1)
+                    grid = F.affine_grid(theta, filtered_data.shape, align_corners=False)
+                    xform_mask = F.grid_sample(mask, grid, align_corners=False)
+                    xform_component = F.grid_sample(element, grid, mode='bilinear', align_corners=False)
+                    inv_mask = 1 - xform_mask
+                    tweak_data = filtered_data*inv_mask + xform_component*xform_mask
+                    label = filtered_label
             case _:
                 assert False, 'the tweak type is not supported.'
         return tweak_data, label

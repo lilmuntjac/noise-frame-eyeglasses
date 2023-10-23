@@ -4,24 +4,35 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import kornia.augmentation as K
 
 from src.datasets import CelebA
 from src.models import BinaryModel
 from src.tweaker import Tweaker, Losses
 from src.utils import *
 
+from torchvision.utils import save_image
+
 def main(args):
     print('Pytorch is running on version: ' + torch.__version__)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
     # dataset, dataloader (CelebA)
     all_attr_list = args.attr_list.copy()
     all_attr_list.append("Male") # add the sensitive atttribute
-    celeba = CelebA(batch_size=args.batch_size, attr_list=all_attr_list)
+    match args.adv_type:
+        case "noise" | "patch" | "frame":
+            celeba = CelebA(batch_size=args.batch_size, attr_list=all_attr_list)
+        case "eyeglasses":
+            celeba = CelebA(batch_size=args.batch_size, attr_list=all_attr_list, 
+                            with_xfrom=True, root='/tmp2/dataset/celeba_tm')
+            aug = K.AugmentationSequential(K.auto.TrivialAugment())
+        case _:
+            assert False, "Unknown element type"
     train_dataloader = celeba.train_dataloader
     val_dataloader = celeba.val_dataloader
 
@@ -46,7 +57,7 @@ def main(args):
             adv_component = torch.full((1, 3, 224, 224), 0.5).to(device)
         case _:
             assert False, "Unknown element type"
-    tweaker = Tweaker(batch_size=args.batch_size, tweak_type=args.adv_type)
+    tweaker = Tweaker(batch_size=args.batch_size, tweak_type=args.adv_type, provide_theta=args.provide_theta)
     losses = Losses(loss_type=args.loss_type, fairness_criteria=args.fairness_matrix, 
                     pred_type='binary', dataset_name='CelebA', soft_label=False)
 
@@ -62,9 +73,9 @@ def main(args):
     adversary_scheduler = torch.optim.lr_scheduler.StepLR(adversary_optimizer, step_size=1, gamma=0.9)
     p_coef = torch.tensor(args.p_coef).to(device)
     n_coef = torch.tensor(args.n_coef).to(device)
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     print(f'Preparation done in {total_time:.4f} secs')
-    
+
     def to_prediction(logit):
         # conert binary logit into prediction
         pred = torch.where(logit > 0.5, 1, 0)
@@ -75,12 +86,19 @@ def main(args):
         train_stat = np.array([])
         model.eval()
         # training loop
-        for batch_idx, (data, raw_label) in enumerate(train_dataloader):
-            raw_label = raw_label.to(torch.float32)
-            data, raw_label = data.to(device), raw_label.to(device)
-            # tweak on data
-            data, raw_label = tweaker.apply(data, raw_label, adv_component)
-            label, sens = raw_label[:,:-1], raw_label[:,-1:None]
+        for batch_idx, bundle in enumerate(train_dataloader):
+            match args.adv_type:
+                case "noise" | "patch" | "frame":
+                    data, raw_label = bundle
+                    data, raw_label = data.to(device), raw_label.to(torch.float32).to(device)
+                    data, raw_label = tweaker.apply(data, raw_label, adv_component) # tweak on data
+                    label, sens = raw_label[:,:-1], raw_label[:,-1:None]
+                case "eyeglasses":
+                    data, raw_label, theta = bundle
+                    data, raw_label, theta = data.to(device), raw_label.to(torch.float32).to(device), theta.to(torch.float32).to(device)
+                    data, raw_label = tweaker.apply(data, raw_label, adv_component, theta) # tweak on data
+                    data = aug(data) # then augment on data
+                    label, sens = raw_label[:,:-1], raw_label[:,-1:None]
             instance = normalize(data)
             adversary_optimizer.zero_grad()
             logit = model(instance)
@@ -99,25 +117,30 @@ def main(args):
             train_stat = train_stat+stat if len(train_stat) else stat
         return train_stat # in shape (1, attribute, 8)
     
-    def val(dataloader=val_dataloader, times=1):
+    def val(dataloader=val_dataloader):
         val_stat = np.array([])
         model.eval()
         with torch.no_grad():
-            # validation may run more than one time per epoch
-            for _ in range(times):
-                # validaton loop
-                for batch_idx, (data, raw_label) in enumerate(dataloader):
-                    data, raw_label = data.to(device), raw_label.to(device)
-                    # tweak on data
-                    data, raw_label = tweaker.apply(data, raw_label, adv_component)
-                    label, sens = raw_label[:,:-1], raw_label[:,-1:None]
-                    instance = normalize(data)
-                    logit = model(instance)
-                    # collecting performance information
-                    pred = to_prediction(logit)
-                    stat = calc_groupcm_soft(pred, label, sens)
-                    stat = stat[np.newaxis, :]
-                    val_stat = val_stat+stat if len(val_stat) else stat
+            # validaton loop
+            for batch_idx, bundle in enumerate(dataloader):
+                match args.adv_type:
+                    case "noise" | "patch" | "frame":
+                        data, raw_label = bundle
+                        data, raw_label = data.to(device), raw_label.to(device)
+                        data, raw_label = tweaker.apply(data, raw_label, adv_component)
+                        label, sens = raw_label[:,:-1], raw_label[:,-1:None]
+                    case "eyeglasses":
+                        data, raw_label, theta = bundle
+                        data, raw_label, theta = data.to(device), raw_label.to(torch.float32).to(device), theta.to(torch.float32).to(device)
+                        data, raw_label = tweaker.apply(data, raw_label, adv_component, theta) # no need to augment
+                        label, sens = raw_label[:,:-1], raw_label[:,-1:None]
+                instance = normalize(data)
+                logit = model(instance)
+                # collecting performance information
+                pred = to_prediction(logit)
+                stat = calc_groupcm_soft(pred, label, sens)
+                stat = stat[np.newaxis, :]
+                val_stat = val_stat+stat if len(val_stat) else stat
             return val_stat # in shape (1, attribute, 8)
     # summarize the status in validation set for some adjustment
     def get_stats_per_epoch(stat):
@@ -154,25 +177,25 @@ def main(args):
 
     # Run the code
     print(f'Start training model')
-    start_time = time.time()
+    start_time = time.perf_counter()
 
     if not args.resume:
-        empty_time = time.time()
+        empty_time = time.perf_counter()
         print(f'collecting statistic for empty tweaks')
-        train_stat_per_epoch = val(train_dataloader, times=1)
-        val_stat_per_epoch = val(times=1)
+        train_stat_per_epoch = val(train_dataloader)
+        val_stat_per_epoch = val()
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
         show_stats_per_epoch(train_stat_per_epoch, val_stat_per_epoch)
-        print(f'done in {(time.time()-empty_time)/60:.4f} mins')
+        print(f'done in {(time.perf_counter()-empty_time)/60:.4f} mins')
     # some parameter might needs the init stats
 
     for epoch in range(args.start_epoch, args.epochs):
-        epoch_start = time.time()
+        epoch_start = time.perf_counter()
         train_stat_per_epoch = train()
         # scheduler.step()
-        val_stat_per_epoch = val(times=1)
-        epoch_time = time.time() - epoch_start
+        val_stat_per_epoch = val()
+        epoch_time = time.perf_counter() - epoch_start
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
@@ -207,7 +230,7 @@ def main(args):
     # save basic statistic
     save_stats(train_stat, f'train', root_folder=advatk_stat_path)
     save_stats(val_stat, f'val', root_folder=advatk_stat_path)
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     print(f'Training time: {total_time/60:.4f} mins')
             
     
@@ -235,6 +258,8 @@ def get_args():
     parser.add_argument("--adv-type", default=None, type=str, help="type of adversarial element, only 'noise', 'patch', 'frame', and 'eyeglasses' are allowed")
     # setting for each types of tweek
 
+    # eyeglasses
+    parser.add_argument("--provide-theta", type=bool, default=True, help="use pre compute theta for eyeglasses transform")
 
 
     parser.add_argument("--fairness-matrix", default="prediction quaility", help="how to measure fairness")

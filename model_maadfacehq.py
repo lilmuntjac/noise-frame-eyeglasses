@@ -13,7 +13,7 @@ def main(args):
     print('Pytorch is running on version: ' + torch.__version__)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
@@ -40,7 +40,7 @@ def main(args):
         val_stat = load_stats(name=args.model_name+'_val', root_folder=model_stat_path)
     else:
         train_stat, val_stat = np.array([]), np.array([])
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     print(f'Preparation done in {total_time:.4f} secs')
 
     def to_prediction(logit):
@@ -106,14 +106,14 @@ def main(args):
 
     # Run the code
     print(f'Start training model')
-    start_time = time.time()
+    start_time = time.perf_counter()
 
     for epoch in range(args.start_epoch, args.epochs):
-        epoch_start = time.time()
+        epoch_start = time.perf_counter()
         train_stat_per_epoch = train()
         # scheduler.step()
         val_stat_per_epoch = val()
-        epoch_time = time.time() - epoch_start
+        epoch_time = time.perf_counter() - epoch_start
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
@@ -134,7 +134,7 @@ def main(args):
     # save basic statistic
     save_stats(train_stat, f'train', root_folder=model_stat_path)
     save_stats(val_stat, f'val', root_folder=model_stat_path)
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     print(f'Training time: {total_time/60:.4f} mins')
 
 def get_args():

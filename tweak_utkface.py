@@ -14,7 +14,7 @@ def main(args):
     print('Pytorch is running on version: ' + torch.__version__)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
@@ -58,7 +58,7 @@ def main(args):
     adversary_optimizer = torch.optim.SGD([adv_component], lr=args.lr, momentum=1e-6)
     adversary_scheduler = torch.optim.lr_scheduler.StepLR(adversary_optimizer, step_size=1, gamma=0.9)
     coef = torch.tensor(args.coef).to(device) 
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     print(f'Preparation done in {total_time:.4f} secs')
 
     def to_prediction(logit):
@@ -95,25 +95,23 @@ def main(args):
             train_stat = train_stat+stat if len(train_stat) else stat
         return train_stat # in shape (1, ?, 4), ?: race + gender + age, 4: split in 2 groups x (right and wrong)
     
-    def val(dataloader=val_dataloader, times=1):
+    def val(dataloader=val_dataloader):
         val_stat = np.array([])
         model.eval()
         with torch.no_grad():
-            # validation may run more than one time per epoch
-            for _ in range(times):
-                # validaton loop
-                for batch_idx, (data, raw_label) in enumerate(dataloader):
-                    data, raw_label = data.to(device), raw_label.to(device)
-                    # tweak on data
-                    data, raw_label = tweaker.apply(data, raw_label, adv_component)
-                    sens, label = raw_label[:,0:1], raw_label[:,1:]
-                    instance = normalize(data)
-                    logit = model(instance)
-                    # collecting performance information
-                    pred = to_prediction(logit)
-                    stat = calc_groupacc(pred, label, sens)
-                    stat = stat[np.newaxis, :]
-                    val_stat = val_stat+stat if len(val_stat) else stat
+            # validaton loop
+            for batch_idx, (data, raw_label) in enumerate(dataloader):
+                data, raw_label = data.to(device), raw_label.to(device)
+                # tweak on data
+                data, raw_label = tweaker.apply(data, raw_label, adv_component)
+                sens, label = raw_label[:,0:1], raw_label[:,1:]
+                instance = normalize(data)
+                logit = model(instance)
+                # collecting performance information
+                pred = to_prediction(logit)
+                stat = calc_groupacc(pred, label, sens)
+                stat = stat[np.newaxis, :]
+                val_stat = val_stat+stat if len(val_stat) else stat
             return val_stat # in shape (1, ?, 4), ?: race + gender + age, 4: split in 2 groups x (right and wrong)
     # summarize the status in validation set for some adjustment
     def get_stats_per_epoch(stat):
@@ -144,25 +142,25 @@ def main(args):
 
     # Run the code
     print(f'Start training model')
-    start_time = time.time()
+    start_time = time.perf_counter()
 
     if not args.resume:
-        empty_time = time.time()
+        empty_time = time.perf_counter()
         print(f'collecting statistic for empty tweaks')
-        train_stat_per_epoch = val(train_dataloader, times=1)
-        val_stat_per_epoch = val(times=4)
+        train_stat_per_epoch = val(train_dataloader)
+        val_stat_per_epoch = val()
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
         show_stats_per_epoch(train_stat_per_epoch, val_stat_per_epoch)
-        print(f'done in {(time.time()-empty_time)/60:.4f} mins')
+        print(f'done in {(time.perf_counter()-empty_time)/60:.4f} mins')
     # some parameter might needs the init stats
 
     for epoch in range(args.start_epoch, args.epochs):
-        epoch_start = time.time()
+        epoch_start = time.perf_counter()
         train_stat_per_epoch = train()
         # scheduler.step()
-        val_stat_per_epoch = val(times=4)
-        epoch_time = time.time() - epoch_start
+        val_stat_per_epoch = val()
+        epoch_time = time.perf_counter() - epoch_start
         print(f'Epoch {epoch:4} done in {epoch_time/60:.4f} mins')
         train_stat = np.concatenate((train_stat, train_stat_per_epoch), axis=0) if len(train_stat) else train_stat_per_epoch
         val_stat = np.concatenate((val_stat, val_stat_per_epoch), axis=0) if len(val_stat) else val_stat_per_epoch
@@ -190,7 +188,7 @@ def main(args):
     # save basic statistic
     save_stats(train_stat, f'train', root_folder=advatk_stat_path)
     save_stats(val_stat, f'val', root_folder=advatk_stat_path)
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     print(f'Training time: {total_time/60:.4f} mins')
 
 def get_args():
