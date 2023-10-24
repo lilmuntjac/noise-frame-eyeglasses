@@ -401,6 +401,35 @@ class Losses:
                 assert False, f'unrecognized fairness criteria'
         return torch.mean(loss_per_attr)
 
+    def binary_matching_loss(self, logit, label, sens):
+        def split_tensor_by_label_attr(tensor, label, attr_idx, regroup_dim=0):
+            match regroup_dim:
+                case 0:
+                    positive_tensor = tensor[label[:,attr_idx]==1]
+                    negative_tensor = tensor[label[:,attr_idx]==0]
+                case 1:
+                    positive_tensor = tensor[:,label[:,attr_idx]==1]
+                    negative_tensor = tensor[:,label[:,attr_idx]==0]
+                case _:
+                    assert False, 'regroup dimension only support 0 and 1'
+            return positive_tensor[:,attr_idx], negative_tensor[:,attr_idx]
+        # prediction and binary cross entropy
+        pred = 1./(1+torch.exp(-1e4*logit-0.5))
+        group_1_pred, group_2_pred = regroup_tensor_binary(pred, sens, regroup_dim=0)
+        group_1_label, group_2_label = regroup_tensor_binary(label, sens, regroup_dim=0)
+        bce = F.binary_cross_entropy(logit, label, reduction='none')
+        group_1_bce, group_2_bce = regroup_tensor_binary(bce, sens, regroup_dim=0)
+        match self.fairness_criteria:
+            case 'equalized odds':
+                # compute loss per attributes
+                loss = 0
+                for attr_idx in range(label.shape[1]):
+                    group_1_bce_positive_label, group_1_bce_negative_label = split_tensor_by_label_attr(group_1_bce, group_1_label, attr_idx)
+                    group_2_bce_positive_label, group_2_bce_negative_label = split_tensor_by_label_attr(group_2_bce, group_2_label, attr_idx)
+                    loss += torch.abs(torch.mean(group_1_bce_positive_label)-torch.mean(group_2_bce_positive_label))
+                    loss += torch.abs(torch.mean(group_1_bce_negative_label)-torch.mean(group_2_bce_negative_label))
+        return loss
+
     def binary_perturb_loss(self, logit, label, sens):
         # fairness function
         def perturbed_eqopp(x, label=label, sens=sens):
@@ -554,6 +583,26 @@ class Losses:
         group_1_CE, group_2_CE = regroup_tensor_categori(loss_CE, sens, regroup_dim=0)
         loss = torch.cat((group_1_CE*group_1_coef, group_2_CE*group_2_coef), 0) # with shape (N)
         return torch.mean(loss)
+    
+    def categori_matching_loss(self, logit, label, sens):
+        match self.dataset_name:
+            case "UTKFace":
+                # Gender, Age
+                gender_logit, age_logit = self.categori_filter_logit(logit, batch_dim=0)
+                age_pred = self.categori_to_approx_prediction(logit=age_logit, batch_dim=0)
+                age_label = F.one_hot(label[:,1], num_classes=9)
+                result = torch.sum(age_pred*age_label, dim=1) # with shape (N)
+                loss_CE = F.cross_entropy(age_logit, label[:,1], reduction='none') # with shape (N)
+            case "HAM10000" | "FairFace":
+                # Case (Diagnosis)
+                case_logit = self.categori_filter_logit(logit, batch_dim=0)
+                case_pred = self.categori_to_approx_prediction(logit=case_logit, batch_dim=0)
+                case_label = F.one_hot(label[:,0], num_classes=7)
+                result = torch.sum(case_pred*case_label, dim=1) # with shape (N)
+                loss_CE = F.cross_entropy(case_logit, label[:,0], reduction='none') # with shape (N)
+        group_1_CE, group_2_CE = regroup_tensor_categori(loss_CE, sens, regroup_dim=0)
+        loss = torch.abs(torch.mean(group_1_CE)-torch.mean(group_2_CE))
+        return loss
 
     def categori_perturb_loss(self, logit, label, sens):
         def perturbed_pq(x, label=label):
@@ -619,7 +668,7 @@ class Losses:
         if self.pred_type == 'binary':
             if len(coef) and sum(coef) > 0:
                 match self.loss_type:
-                    case 'direct' | 'masking' | 'perturb optim':
+                    case 'direct' | 'masking' | 'matching' | 'perturb optim':
                         pred = torch.where(logit> 0.5, 1, 0)
                         FN_mask, FP_mask = torch.sub(1, pred)*label, pred*torch.sub(1, label)
                         BCEloss = F.binary_cross_entropy(logit, label, reduction='none')
@@ -632,6 +681,8 @@ class Losses:
                     loss = self.binary_direct_loss(logit, label, sens)
                 case 'masking':
                     loss = self.binary_masking_loss(logit, label, sens)
+                case 'matching':
+                    loss = self.binary_matching_loss(logit, label, sens)
                 case 'perturb optim' | 'full perturb optim':
                     loss = self.binary_perturb_loss(logit, label, sens)
                 case _:
@@ -639,7 +690,7 @@ class Losses:
         elif self.pred_type == 'categorical':
             if len(coef) and sum(coef) > 0:
                 match self.loss_type:
-                    case 'direct' | 'masking' | 'perturb optim':
+                    case 'direct' | 'masking' | 'matching' | 'perturb optim':
                         match self.dataset_name:
                             case "UTKFace":
                                 _, age_logit = self.categori_filter_logit(logit, batch_dim=0)
@@ -655,6 +706,8 @@ class Losses:
                     loss = self.categori_direct_loss(logit, label, sens)
                 case 'masking':
                     loss = self.categori_masking_loss(logit, label, sens)
+                case 'matching':
+                    loss = self.categori_matching_loss(logit, label, sens)
                 case 'perturb optim' | 'full perturb optim':
                     loss = self.categori_perturb_loss(logit, label, sens)
                 case _:
