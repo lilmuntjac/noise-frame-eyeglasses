@@ -134,9 +134,9 @@ class Tweaker:
         return theta.to(self.device)
     
     # -------------------- frame --------------------
-    def get_identity_transform(self):
+    def get_identity_transform(self, batch_size):
         theta = torch.tensor([[[1.,0.,0.],[0.,1.,0.]]])
-        theta = theta.repeat(self.batch_size, 1, 1)
+        theta = theta.repeat(batch_size, 1, 1)
         return theta.to(self.device)
     
     # -------------------- eyeglesses --------------------
@@ -199,7 +199,7 @@ class Tweaker:
                 tweak_data = data + xform_component
                 tweak_data = torch.clamp(tweak_data, min=0.0, max=1.0)
             case 'frame':
-                theta = self.get_identity_transform()
+                theta = self.get_identity_transform(batch_size=data.shape[0])
                 mask = self.mask.repeat(data.shape[0], 1, 1, 1)
                 element = element.repeat(data.shape[0], 1, 1, 1)
                 grid = F.affine_grid(theta, data.shape, align_corners=False)
