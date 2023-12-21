@@ -114,8 +114,8 @@ def load_model(model, optimizer, scheduler, name, root_folder='/tmp2/npfe/model_
     model.load_state_dict(ckpt['model_state_dict'])
     optimizer.load_state_dict(ckpt['optimizer_state_dict'])
     scheduler.load_state_dict(ckpt['scheduler_state_dict'])
-    torch.set_rng_state(ckpt['rng_state'])
-    torch.cuda.set_rng_state(ckpt['cuda_rng_state'])
+    # torch.set_rng_state(ckpt['rng_state'])
+    # torch.cuda.set_rng_state(ckpt['cuda_rng_state'])
 
 def save_model(model, optimizer, scheduler, name, root_folder='/tmp2/npfe/model_checkpoint'):
     # Save the model weight, optimizer, scheduler, and random states

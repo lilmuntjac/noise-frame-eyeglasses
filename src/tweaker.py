@@ -674,12 +674,12 @@ class Losses:
                         BCEloss = F.binary_cross_entropy(logit, label, reduction='none')
                         FN_BCE, FP_BCE = torch.mean(BCEloss*FN_mask, dim=0), torch.mean(BCEloss*FP_mask, dim=0)
                         recovery_loss = torch.mean(coef*FN_BCE+n_coef*FP_BCE)
-                    case 'full perturb optim':
+                    case 'full perturb optim' | 'masking perturb recovery':
                         recovery_loss = self.binary_accuracy_perturb_loss(logit, label, sens, coef, n_coef)
             match self.loss_type:
                 case 'direct':
                     loss = self.binary_direct_loss(logit, label, sens)
-                case 'masking':
+                case 'masking' | 'masking perturb recovery':
                     loss = self.binary_masking_loss(logit, label, sens)
                 case 'matching':
                     loss = self.binary_matching_loss(logit, label, sens)
@@ -699,12 +699,12 @@ class Losses:
                                 case_logit = self.categori_filter_logit(logit, batch_dim=0)
                                 loss_CE = F.cross_entropy(case_logit, label[:,0], reduction='none') # with shape (N)
                         recovery_loss = torch.mean(loss_CE, dim=0) * coef
-                    case 'full perturb optim':
+                    case 'full perturb optim' | 'masking perturb recovery':
                         recovery_loss = self.categori_accuracy_perturb_loss(logit, label, sens, coef)
             match self.loss_type:
                 case 'direct':
                     loss = self.categori_direct_loss(logit, label, sens)
-                case 'masking':
+                case 'masking' | 'masking perturb recovery':
                     loss = self.categori_masking_loss(logit, label, sens)
                 case 'matching':
                     loss = self.categori_matching_loss(logit, label, sens)
